@@ -2,23 +2,26 @@
 
 pub mod error;
 
-use error::Error;
+use semver::{Version, VersionReq};
+use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, str::FromStr};
 
-pub type Result<T> = std::result::Result<T, Error>;
+use error::Error;
 
 pub const CRATES_IO_INDEX_URL: &str = "https://index.crates.io";
 
-use semver::{Version, VersionReq};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Query {
     name: String,
     version_req: Option<VersionReq>,
+    custom_index: Option<String>,
 }
 
-impl Query {
-    pub fn parse(name: &str) -> Result<Self> {
+impl FromStr for Query {
+    type Err = Error;
+
+    fn from_str(name: &str) -> std::result::Result<Self, Self::Err> {
         let (name, version_req) = match name.split_once('@') {
             Some((name, version)) if !version.is_empty() => (name, Some(version)),
             _ => (name, None),
@@ -31,26 +34,42 @@ impl Query {
         Ok(Self {
             name: name.to_owned(),
             version_req,
+            custom_index: None,
         })
     }
+}
 
-    pub fn package(&self) -> Result<Package> {
+impl Query {
+    pub fn with_index<T>(mut self, custom_index: T) -> Self
+    where
+        String: From<T>,
+    {
+        self.custom_index = Some(String::from(custom_index));
+        self
+    }
+
+    pub fn raw_index(&self) -> Result<String> {
+        let index_url = self.custom_index.as_deref().unwrap_or(CRATES_IO_INDEX_URL);
         let index_path = get_index_path(&self.name);
-        let response = ureq::get(&format!("{CRATES_IO_INDEX_URL}/{index_path}"))
+        let response = ureq::get(&format!("{index_url}/{index_path}"))
             .call()
             .map_err(|err| Error::Request(Box::new(err)))?
             .into_string()
             .map_err(Error::Io)?;
 
-        Package::from_index_file(response)
+        Ok(response)
+    }
+
+    pub fn package(&self) -> Result<Package> {
+        Package::from_index(self.raw_index()?)
     }
 
     pub fn submit(&self) -> Result<Option<Release>> {
         let package = self.package()?;
 
         match self.version_req {
-            Some(ref version_req) => Ok(package.version(version_req).cloned()),
-            None => Ok(package.latest().cloned()),
+            Some(ref version_req) => Ok(package.into_version(version_req)),
+            None => Ok(package.into_latest()),
         }
     }
 }
@@ -71,8 +90,23 @@ impl Package {
         self.index_path.as_str()
     }
 
+    pub fn releases(&self) -> &Vec<Release> {
+        &self.releases
+    }
+
+    pub fn into_latest(mut self) -> Option<Release> {
+        self.releases.pop()
+    }
+
     pub fn latest(&self) -> Option<&Release> {
         self.releases.last()
+    }
+
+    pub fn into_version(self, version_req: &semver::VersionReq) -> Option<Release> {
+        self.releases
+            .into_iter()
+            .rev()
+            .find(|release| version_req.matches(&release.vers))
     }
 
     pub fn version(&self, version_req: &semver::VersionReq) -> Option<&Release> {
@@ -82,11 +116,7 @@ impl Package {
             .find(|release| version_req.matches(&release.vers))
     }
 
-    pub fn releases(&self) -> &Vec<Release> {
-        &self.releases
-    }
-
-    pub fn from_index_file<T>(content: T) -> Result<Self>
+    pub fn from_index<T>(content: T) -> Result<Self>
     where
         T: AsRef<str>,
     {
@@ -100,7 +130,6 @@ impl Package {
 
         let name = releases
             .last()
-            .take()
             .ok_or(Error::FromIndexFile("empty"))?
             .name
             .clone();
@@ -113,6 +142,10 @@ impl Package {
             releases,
         })
     }
+}
+
+const fn one() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,23 +168,19 @@ impl Release {
     }
 }
 
-const fn one() -> u32 {
-    1
-}
-
 pub type Features = BTreeMap<String, Vec<String>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dependency {
-    name: String,
-    req: VersionReq,
-    features: Vec<String>,
-    optional: bool,
-    default_features: bool,
-    target: Option<String>,
-    kind: Option<String>,
-    registry: Option<String>,
-    package: Option<String>,
+    pub name: String,
+    pub req: VersionReq,
+    pub features: Vec<String>,
+    pub optional: bool,
+    pub default_features: bool,
+    pub target: Option<String>,
+    pub kind: Option<String>,
+    pub registry: Option<String>,
+    pub package: Option<String>,
 }
 
 pub fn get_index_path<T>(package: T) -> String
