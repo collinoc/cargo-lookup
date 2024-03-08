@@ -1,61 +1,132 @@
 #![deny(clippy::all)]
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Result};
+use cargo_query::{Query, Release};
 use clap::Parser;
-use std::collections::BTreeMap;
+use std::ops::Deref;
+
 mod cli;
 
-use cargo_query::Query;
+use cli::{Cli, Format, Options, Type};
 
 fn main() -> Result<()> {
-    let args = cli::Args::parse();
-    let packages = args.packages;
+    let Cli::Query(options) = Cli::parse();
+    let packages = options.packages.as_slice();
 
-    let mut results = Vec::with_capacity(packages.len());
+    let mut resolved = Vec::new();
+    let resolve_depth = options
+        .max_depth
+        .map(Depth::Restricted)
+        .unwrap_or(Depth::Infinite);
 
     for package in packages {
-        let query: Query = package.parse()?;
-        let release = query
-            .submit()?
-            .with_context(|| format!("package `{package}` not found"))?;
-
-        results.push((package, release));
+        resolve(
+            package,
+            options.index_url.as_deref(),
+            resolve_depth,
+            &options,
+            &mut resolved,
+        )?;
     }
 
-    if args.json {
-        let map = BTreeMap::from_iter(results);
-        let json = if args.pretty {
-            serde_json::to_string_pretty(&map)?
+    if options.kind == Some(Type::Json) {
+        // Print all resolved items in one JSON list
+        let json = if options.format == Format::Pretty {
+            serde_json::to_string_pretty(&resolved)?
         } else {
-            serde_json::to_string(&map)?
+            serde_json::to_string(&resolved)?
         };
 
         println!("{json}");
     } else {
-        for (package, release) in results {
-            if args.features {
-                let feature_string = release
+        for release in resolved {
+            let use_prefix = !matches!(options.format, Format::CargoAddAll | Format::NoPrefix);
+            let (kind, delim) = match options.format {
+                Format::CargoAddAll => (Some(Type::Features).as_ref(), ","),
+                _ => (options.kind.as_ref(), options.delim.as_str()),
+            };
+
+            let info_string = match kind {
+                Some(Type::Features) => release
                     .features
                     .keys()
-                    .fold(String::new(), |list, feature| list + " " + feature);
-                let feature_string = feature_string.trim();
-
-                println!("{package}:{feature_string}");
-            } else if args.deps {
-                let deps_string = release
+                    .map(Deref::deref)
+                    .collect::<Vec<&str>>()
+                    .join(delim),
+                Some(Type::Deps) => release
                     .deps
-                    .into_iter()
-                    .map(|dep| dep.name)
-                    .collect::<Vec<String>>()
-                    .join(" ");
+                    .iter()
+                    .map(|dep| dep.name.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(delim),
+                Some(Type::Json) | None => release.as_json_string()?,
+            };
 
-                println!("{package}:{deps_string}");
+            if use_prefix {
+                let package = &release.name;
+                println!("{package}:{info_string}");
             } else {
-                let json = release.as_json_string()?;
-                println!("{package}:{json}");
+                println!("{info_string}");
             }
         }
     }
 
     Ok(())
+}
+
+fn resolve(
+    package: &str,
+    index: Option<&str>,
+    depth: Depth,
+    options: &Options,
+    resolved: &mut Vec<Release>,
+) -> Result<()> {
+    let query: Query = match index {
+        Some(custom) => package.parse::<Query>()?.with_index(custom),
+        None => package.parse()?,
+    };
+
+    let result = match query.submit() {
+        Ok(Some(result)) => result,
+        _ if options.ignore_missing => return Ok(()),
+        Ok(None) => bail!("failed to find a matching release of `{package}`"),
+        Err(other) => return Err(anyhow!(other)),
+    };
+
+    let deps = result.deps.clone();
+
+    resolved.push(result);
+
+    if options.recursive
+        && (depth == Depth::Infinite || matches!(depth, Depth::Restricted(max) if max > 1))
+    {
+        let depth = match depth {
+            Depth::Infinite => Depth::Infinite,
+            Depth::Restricted(max) => Depth::Restricted(max - 1),
+        };
+
+        for sub in deps {
+            let name = sub.package.as_deref().unwrap_or(sub.name.as_str());
+            let version_req = sub.req;
+            let sub_query = format!("{name}@{version_req}");
+
+            // Stop cyclic dependencies from being infinitely resolved
+            if resolved
+                .iter()
+                .any(|res| name == res.name && version_req.matches(&res.vers))
+            {
+                continue;
+            }
+
+            resolve(&sub_query, index, depth, options, resolved)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Depth {
+    Infinite,
+    Restricted(usize),
 }

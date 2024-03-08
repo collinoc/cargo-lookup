@@ -37,6 +37,11 @@ fn test_get_index_path_long() {
 }
 
 #[test]
+fn test_get_index_path_caps() {
+    assert_eq!(get_index_path("AbcDefGH"), "ab/cd/abcdefgh");
+}
+
+#[test]
 fn make_query_no_version() {
     let query: Query = "cargo".parse().expect("parse query");
     assert_eq!(query.name, "cargo");

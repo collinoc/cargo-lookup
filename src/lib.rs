@@ -53,8 +53,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// A query for a specific rust package based on the packages name, an option version requirement,
 /// in an optional custom index. By default, [`CRATES_IO_INDEX_URL`] will be used as the index
-///
-/// [`CRATES_IO_INDEX_URL`]: CRATES_IO_INDEX_URL
+#[derive(Debug, Clone)]
 pub struct Query {
     name: String,
     version_req: Option<VersionReq>,
@@ -301,7 +300,7 @@ where
 {
     let package = package.as_ref();
 
-    match package.len() {
+    let path = match package.len() {
         1 => format!("1/{package}"),
         2 => format!("2/{package}"),
         3 => {
@@ -313,5 +312,7 @@ where
             let next_two_chars = &package[2..4];
             format!("{first_two_chars}/{next_two_chars}/{package}")
         }
-    }
+    };
+
+    path.to_ascii_lowercase()
 }

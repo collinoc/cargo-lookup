@@ -6,8 +6,9 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.76"
 homepage = "https://github.com/collinoc/cargo-query"
 repository = "https://github.com/collinoc/cargo-query"
-description = "Command line crates.io index querying for Cargo"
+description = "Command-line crate registry index querying for Cargo"
 categories = ["command-line-utilities", "development-tools::cargo-plugins"]
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
