@@ -14,4 +14,7 @@ pub struct Args {
     /// Print output in json format
     #[clap(short, long)]
     pub(crate) json: bool,
+    /// Pretty print output
+    #[clap(short, long)]
+    pub(crate) pretty: bool,
 }
