@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 
 use anyhow::{anyhow, bail, Result};
-use cargo_query::{Query, Release};
+use cargo_lookup::{Query, Release};
 use clap::Parser;
 use std::ops::Deref;
 
@@ -10,7 +10,7 @@ mod cli;
 use cli::{Cli, Format, Options, Type};
 
 fn main() -> Result<()> {
-    let Cli::Query(options) = Cli::parse();
+    let Cli::Lookup(options) = Cli::parse();
     let packages = options.packages.as_slice();
 
     let mut resolved = Vec::new();

@@ -3,8 +3,8 @@ use clap::{Parser, ValueEnum};
 #[derive(Debug, Parser)]
 #[clap(name = "cargo", bin_name = "cargo")]
 pub enum Cli {
-    #[clap(version, about, name = "query")]
-    Query(Options),
+    #[clap(version, about, name = "lookup")]
+    Lookup(Options),
 }
 
 #[derive(Debug, Parser)]

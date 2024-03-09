@@ -1,6 +1,6 @@
-//! [![github]](https://github.com/collinoc/cargo-query)
+//! [![github]](https://github.com/collinoc/cargo-lookup)
 //!
-//! [github]: https://img.shields.io/badge/github-blue?style=for-the-badge&logo=github&link=https%3A%2F%2Fgithub.com%2Fcollinoc%2Fcargo-query
+//! [github]: https://img.shields.io/badge/github-blue?style=for-the-badge&logo=github&link=https%3A%2F%2Fgithub.com%2Fcollinoc%2Fcargo-lookup
 //!
 //! A library for querying Rust crate registries
 //!
@@ -8,7 +8,7 @@
 //!
 //! Get all info for a package:
 //! ```no_run
-//! use cargo_query::{Query, Result};
+//! use cargo_lookup::{Query, Result};
 //!
 //! fn main() -> Result<()> {
 //!     let query: Query = "cargo".parse()?;
@@ -22,7 +22,7 @@
 //!
 //! Get a specific release of a package:
 //! ```no_run
-//! use cargo_query::{Query, Result};
+//! use cargo_lookup::{Query, Result};
 //!
 //! fn main() -> Result<()> {
 //!     let query: Query = "cargo@=0.2.153".parse()?;
@@ -289,7 +289,7 @@ pub struct Dependency {
 /// ## Examples
 ///
 /// ```
-/// use cargo_query::get_index_path;
+/// use cargo_lookup::get_index_path;
 ///
 /// assert_eq!(get_index_path("cargo"), "ca/rg/cargo");
 /// assert_eq!(get_index_path("ice"), "3/i/ice");

@@ -1,36 +1,36 @@
-# Cargo Query
+# Cargo Lookup
 
 A command-line utility for querying Rust crate registry indexes
 
-[![github]](https://github.com/collinoc/cargo-query)
+[![github]](https://github.com/collinoc/cargo-lookup)
 
-[github]: https://img.shields.io/badge/github-blue?style=for-the-badge&logo=github&link=https%3A%2F%2Fgithub.com%2Fcollinoc%2Fcargo-query
+[github]: https://img.shields.io/badge/github-blue?style=for-the-badge&logo=github&link=https%3A%2F%2Fgithub.com%2Fcollinoc%2Fcargo-lookup
 
-Cargo Query allows you to query [crate indexes](https://crates.io/data-access#crate-index) for info about different crates, including features and dependencies. You can also specify [semantic versioning requirements](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility) to query info for a specific release of a crate!
+Cargo Lookup allows you to query [crate indexes](https://crates.io/data-access#crate-index) for info about different crates, including features and dependencies. You can also specify [semantic versioning requirements](https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility) to query info for a specific release of a crate!
 
 # Installation
 
-The quickest way to install Cargo Query is via [`Cargo`](https://doc.rust-lang.org/cargo/getting-started/installation.html)
+The quickest way to install Cargo Lookup is via [`Cargo`](https://doc.rust-lang.org/cargo/getting-started/installation.html)
 
 ```console
-$ cargo install cargo-query
+$ cargo install cargo-lookup
 ```
 
 # Usage
 
-Below are some common usage examples that you might find use of. Run `cargo query --help` to see what else it can do!
+Below are some common usage examples that you might find use of. Run `cargo lookup --help` to see what else it can do!
 
 ### List the features of a package
 
 ```console
-$ cargo query libc --type=features
+$ cargo lookup libc --type=features
 libc:align const-extern-fn default extra_traits rustc-dep-of-std std use_std
 ```
 
 ### Add all features for a package to your project
 
 ```console
-$ cargo add syn --features=$(cargo query syn --format=cargo-add-all)
+$ cargo add syn --features=$(cargo lookup syn --format=cargo-add-all)
 Updating crates.io index
     Adding syn v2.0.52 to dependencies.
             Features:
@@ -52,7 +52,7 @@ Updating crates.io index
 ### List the dependencies of packages
 
 ```console
-$ cargo query serde libc --type=deps
+$ cargo lookup serde libc --type=deps
 libc:rustc-std-workspace-core
 serde:serde_derive serde_derive serde_derive
 ```
@@ -60,7 +60,7 @@ serde:serde_derive serde_derive serde_derive
 ### List package info in pretty printed JSON
 
 ```console
-$ cargo query semver --type=json --format=pretty
+$ cargo lookup semver --type=json --format=pretty
 [
   {
     "name": "semver",
