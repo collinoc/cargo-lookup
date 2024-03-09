@@ -1,0 +1,23 @@
+[package]
+name = "cargo-lookup"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.76"
+homepage = "https://github.com/collinoc/cargo-lookup"
+repository = "https://github.com/collinoc/cargo-lookup"
+description = "Command-line crate registry index querying for Cargo"
+categories = ["command-line-utilities", "development-tools::cargo-plugins"]
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0.79"
+clap = { version = "4.5.1", features = ["derive"], optional = true }
+semver = { version = "1.0.22", features = ["serde"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.113"
+ureq = "2.9.6"
+
+[features]
+default = ["cli"]
+cli = ["clap"]
