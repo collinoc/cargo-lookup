@@ -20,4 +20,4 @@ ureq = "2.9.6"
 
 [features]
 default = ["cli"]
-cli = ["clap"]
+cli = ["dep:clap"]
