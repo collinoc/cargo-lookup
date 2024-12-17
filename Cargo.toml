@@ -11,13 +11,15 @@ categories = ["command-line-utilities", "development-tools::cargo-plugins"]
 readme = "README.md"
 
 [dependencies]
-anyhow = "1.0.79"
+anyhow = { version = "1.0.79", optional = true }
 clap = { version = "4.5.1", features = ["derive"], optional = true }
+reqwest = { version = "0.12.1", features = ["blocking"] }
 semver = { version = "1.0.22", features = ["serde"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.113"
+tokio = { version = "1.36.0", optional = true, features = ["full"] }
 ureq = "2.9.6"
 
 [features]
 default = ["cli"]
-cli = ["dep:clap"]
+cli = ["dep:clap", "dep:tokio", "dep:anyhow"]

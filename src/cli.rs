@@ -33,6 +33,9 @@ pub struct Options {
     /// Ignore missing packages
     #[clap(short = 'g', long)]
     pub(crate) ignore_missing: bool,
+    #[clap(long)]
+    /// Count resolved items
+    pub(crate) count: bool,
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]

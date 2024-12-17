@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub enum Error {
     InvalidVersion(semver::Error),
-    Request(Box<ureq::Error>),
+    Request(reqwest::Error),
     Io(std::io::Error),
     Serialize(serde_json::Error),
     Deserialize(serde_json::Error),

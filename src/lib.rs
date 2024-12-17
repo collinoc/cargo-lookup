@@ -42,7 +42,7 @@ mod tests;
 
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, str::FromStr};
+use std::{collections::BTreeMap, fmt::Display, str::FromStr};
 
 use error::Error;
 
@@ -55,8 +55,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// in an optional custom index. By default, [`CRATES_IO_INDEX_URL`] will be used as the index
 #[derive(Debug, Clone)]
 pub struct Query {
-    name: String,
-    version_req: Option<VersionReq>,
+    pub(crate) name: String,
+    pub(crate) version_req: VersionReq,
     custom_index: Option<String>,
 }
 
@@ -71,7 +71,8 @@ impl FromStr for Query {
 
         let version_req = version_req
             .map(|req| VersionReq::parse(req).map_err(Error::InvalidVersion))
-            .transpose()?;
+            .transpose()?
+            .unwrap_or(VersionReq::STAR);
 
         Ok(Self {
             name: name.to_owned(),
@@ -82,7 +83,37 @@ impl FromStr for Query {
 }
 
 impl Query {
-    /// USe a custom crate index for this query
+    pub fn new<T>(name: T) -> Self
+    where
+        String: From<T>,
+    {
+        Self {
+            name: String::from(name),
+            version_req: VersionReq::STAR,
+            custom_index: None,
+        }
+    }
+
+    pub fn new_req<T>(name: T, version_req: VersionReq) -> Self
+    where
+        String: From<T>,
+    {
+        Self {
+            name: String::from(name),
+            version_req,
+            custom_index: None,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn req(&self) -> &VersionReq {
+        &self.version_req
+    }
+
+    /// Use a custom crate index for this query
     pub fn with_index<T>(mut self, custom_index: T) -> Self
     where
         String: From<T>,
@@ -92,34 +123,38 @@ impl Query {
     }
 
     /// Return the raw contents of the index file found by this query
-    pub fn raw_index(&self) -> Result<String> {
+    pub fn raw_index(&self, client: &reqwest::blocking::Client) -> Result<String> {
         let index_url = self.custom_index.as_deref().unwrap_or(CRATES_IO_INDEX_URL);
         let index_path = get_index_path(&self.name);
-        let response = ureq::get(&format!("{index_url}/{index_path}"))
-            .call()
-            .map_err(|err| Error::Request(Box::new(err)))?
-            .into_string()
-            .map_err(Error::Io)?;
+        let response = client
+            .get(format!("{index_url}/{index_path}"))
+            .send()
+            .map_err(Error::Request)?
+            .text()
+            .map_err(Error::Request)?;
 
         Ok(response)
     }
 
     /// Return all of the info for the package found by this query
-    pub fn package(&self) -> Result<Package> {
-        Package::from_index(self.raw_index()?)
+    pub fn package(&self, client: &reqwest::blocking::Client) -> Result<Package> {
+        Package::from_index(self.raw_index(client)?)
     }
 
     /// Return a specific release of a package found by this query
     ///
     /// If no version requirement ws specified, the latest version of the found package
     /// will be returned
-    pub fn submit(&self) -> Result<Option<Release>> {
-        let package = self.package()?;
+    pub fn submit(&self, client: &reqwest::blocking::Client) -> Result<Option<Release>> {
+        let package = self.package(client)?;
 
-        match self.version_req {
-            Some(ref version_req) => Ok(package.into_version(version_req)),
-            None => Ok(package.into_latest()),
-        }
+        Ok(package.into_version(&self.version_req))
+    }
+}
+
+impl Display for Query {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}@{}", self.name, self.version_req))
     }
 }
 
@@ -254,6 +289,11 @@ impl Release {
     /// Convert the release to it's json representation
     pub fn as_json_string(&self) -> Result<String> {
         serde_json::to_string(self).map_err(Error::Serialize)
+    }
+
+    /// Whether this release will satisfy a given query or not
+    pub fn satisfies(&self, query: &Query) -> bool {
+        self.name == query.name && query.version_req.matches(&self.vers)
     }
 }
 

@@ -1,40 +1,83 @@
 #![deny(clippy::all)]
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use cargo_lookup::{Query, Release};
 use clap::Parser;
+use reqwest::blocking::Client;
+use std::collections::{HashSet, VecDeque};
 use std::ops::Deref;
+use std::sync::Arc;
+use std::sync::{mpsc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 mod cli;
-
 use cli::{Cli, Format, Options, Type};
 
-fn main() -> Result<()> {
-    let Cli::Lookup(options) = Cli::parse();
-    let packages = options.packages.as_slice();
+#[derive(Debug, Default)]
+struct ResolutionContext {
+    resolved: Vec<Release>,
+    pending: HashSet<String>,
+}
 
-    let mut resolved = Vec::new();
+type Context = Arc<Mutex<ResolutionContext>>;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let Cli::Lookup(options) = Cli::parse();
+    let packages = options.packages.clone();
+    let options = Arc::new(options);
+
+    let context = Context::default();
     let resolve_depth = options
         .max_depth
         .map(Depth::Restricted)
         .unwrap_or(Depth::Infinite);
 
-    for package in packages {
-        resolve(
-            package,
-            options.index_url.as_deref(),
-            resolve_depth,
-            &options,
-            &mut resolved,
-        )?;
+    let client = Arc::new(Client::new());
+    let mut pending = VecDeque::new();
+
+    for package in packages.into_iter() {
+        let query: Query = package.parse()?;
+        pending.push_back((resolve_depth, query));
     }
 
-    if options.kind == Some(Type::Json) {
+    while let Some((depth, query)) = pending.pop_front() {
+        let next_depth = match depth {
+            Depth::Infinite => Depth::Infinite,
+            Depth::Restricted(0) => break,
+            Depth::Restricted(depth) => Depth::Restricted(depth - 1),
+        };
+
+        let mut context = context.lock();
+
+        if let Some(release) = resolve(query, Arc::clone(&client), Arc::clone(&options))? {
+            let deps = release.deps.clone();
+
+            // Try taking this release, quickly resolving all of it's dependencies via the threadpool,
+            // and then for each nested dep, shove that to the pending deque along with the depth
+
+            for dep in deps {
+                let name = dep.package.unwrap_or(dep.name);
+                let req = dep.req;
+
+                pending.push_back((next_depth, Query::new_req(name, req)));
+            }
+
+            context.resolved.push(release);
+        }
+    }
+
+    let resolved = &context.lock().resolved;
+
+    if options.count {
+        println!("{}", resolved.len());
+    } else if options.kind == Some(Type::Json) {
         // Print all resolved items in one JSON list
         let json = if options.format == Format::Pretty {
-            serde_json::to_string_pretty(&resolved)?
+            serde_json::to_string_pretty(resolved)?
         } else {
-            serde_json::to_string(&resolved)?
+            serde_json::to_string(resolved)?
         };
 
         println!("{json}");
@@ -68,57 +111,6 @@ fn main() -> Result<()> {
             } else {
                 println!("{info_string}");
             }
-        }
-    }
-
-    Ok(())
-}
-
-fn resolve(
-    package: &str,
-    index: Option<&str>,
-    depth: Depth,
-    options: &Options,
-    resolved: &mut Vec<Release>,
-) -> Result<()> {
-    let query: Query = match index {
-        Some(custom) => package.parse::<Query>()?.with_index(custom),
-        None => package.parse()?,
-    };
-
-    let result = match query.submit() {
-        Ok(Some(result)) => result,
-        _ if options.ignore_missing => return Ok(()),
-        Ok(None) => bail!("failed to find a matching release of `{package}`"),
-        Err(other) => return Err(anyhow!(other)),
-    };
-
-    let deps = result.deps.clone();
-
-    resolved.push(result);
-
-    if options.recursive
-        && (depth == Depth::Infinite || matches!(depth, Depth::Restricted(max) if max > 1))
-    {
-        let depth = match depth {
-            Depth::Infinite => Depth::Infinite,
-            Depth::Restricted(max) => Depth::Restricted(max - 1),
-        };
-
-        for sub in deps {
-            let name = sub.package.as_deref().unwrap_or(sub.name.as_str());
-            let version_req = sub.req;
-            let sub_query = format!("{name}@{version_req}");
-
-            // Stop cyclic dependencies from being infinitely resolved
-            if resolved
-                .iter()
-                .any(|res| name == res.name && version_req.matches(&res.vers))
-            {
-                continue;
-            }
-
-            resolve(&sub_query, index, depth, options, resolved)?;
         }
     }
 
